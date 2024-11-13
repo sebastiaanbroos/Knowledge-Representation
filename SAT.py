@@ -409,10 +409,72 @@ def choose_literal_hybrid(clauses, assignments):
 
     return best_literal
 
+
+# Assuming dpll and read_dimacs_cnf functions are implemented
+
+def run_solver_on_all_puzzles(strategy, input_dir, output_csv):
+    # Prepare CSV file for saving results
+    with open(output_csv, 'w', newline='') as csvfile:
+        fieldnames = ['file', 'satisfiable', 'total_time', 'calls', 'unit_props', 'literal_choices', 'max_depth', 'backtracks', 'conflicts', 'heuristic_time']
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        writer.writeheader()
+
+        # Loop through each .cnf file in the input directory
+        for root, dirs, files in os.walk(input_dir):
+            for file in files:
+                if file.endswith('.cnf'):
+                    file_path = os.path.join(root, file)
+                    print(f"Processing file: {file_path}")
+
+                    # Initialize stats dictionary for each puzzle
+                    stats = {
+                        'calls': 0,
+                        'unit_props': 0,
+                        'literal_choices': 0,
+                        'max_depth': 0,
+                        'backtracks': 0,
+                        'conflicts': 0,
+                        'heuristic_time': 0
+                    }
+
+                    # Read CNF formula from file
+                    num_vars, num_clauses, clauses = read_dimacs_cnf(file_path)
+
+                    # Record start time
+                    start_time = time.time()
+
+                    # Solve the CNF formula using the specified heuristic
+                    result = dpll(clauses, stats=stats, heuristic=strategy)
+
+                    # Record end time
+                    end_time = time.time()
+                    total_time = end_time - start_time
+
+                    # Determine satisfiability and collect results
+                    satisfiable = 'SATISFIABLE' if result is not None else 'UNSATISFIABLE'
+                    row = {
+                        'file': file,
+                        'satisfiable': satisfiable,
+                        'total_time': total_time,
+                        'calls': stats['calls'],
+                        'unit_props': stats['unit_props'],
+                        'literal_choices': stats['literal_choices'],
+                        'max_depth': stats['max_depth'],
+                        'backtracks': stats['backtracks'],
+                        'conflicts': stats['conflicts'],
+                        'heuristic_time': stats['heuristic_time']
+                    }
+
+                    # Write results to CSV
+                    writer.writerow(row)
+                    print(f"Saved results for {file} to {output_csv}")
+
 def main():
-    parser = argparse.ArgumentParser(description='SAT Solver using DPLL algorithm.')
-    parser.add_argument('-S', '--strategy', required=True, help='Strategy number (1: basic, 2: Jeroslow-Wang, 3: Shannon entropy, 4: Hybrid)')
-    parser.add_argument('inputfile', help='Input file containing the CNF formula in DIMACS format')
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description='Run SAT Solver on all puzzles and save statistics.')
+    parser.add_argument('-S', '--strategy', required=True, choices=['1', '2', '3', '4'], help='Strategy number (1: basic, 2: Jeroslow-Wang, 3: Shannon entropy, 4: Hybrid)')
+    parser.add_argument('--input_dir', required=True, help='Directory containing .cnf files to test')
+    parser.add_argument('--output_csv', required=True, help='Output CSV file to save statistics')
 
     args = parser.parse_args()
 
@@ -423,54 +485,10 @@ def main():
         '3': 'shannon-entropy',
         '4': 'hybrid'
     }
+    heuristic = strategy_map[args.strategy]
 
-    heuristic = strategy_map.get(args.strategy)
-    if heuristic is None:
-        print('Invalid strategy number. Choose from 1 (basic), 2 (Jeroslow-Wang), 3 (Shannon entropy), 4 (Hybrid)')
-        sys.exit(1)
-
-    # Read the CNF formula from the input file
-    num_vars, num_clauses, clauses = read_dimacs_cnf(args.inputfile)
-
-    # Initialize stats dictionary with default values
-    stats = {
-        'calls': 0,
-        'unit_props': 0,
-        'literal_choices': 0,
-        'max_depth': 0,
-        'backtracks': 0,
-        'conflicts': 0,
-        'heuristic_time': 0
-    }
-
-    # Record start time
-    start_time = time.time()
-
-    # Solve the CNF formula using the selected heuristic
-    result = dpll(clauses, stats=stats, heuristic=heuristic)
-
-    # Record end time
-    end_time = time.time()
-    total_time = end_time - start_time
-
-    # Output results and statistics
-    if result is not None:
-        print('SATISFIABLE')
-        assignment_list = [var if result.get(var, False) else -var for var in range(1, num_vars + 1)]
-        #print('v', ' '.join(map(str, assignment_list)), '0')
-    else:
-        print('UNSATISFIABLE')
-
-    print("\nStatistics:")
-    print(f"Total Execution Time: {total_time:.4f} seconds")
-    print(f"Total Recursive Calls: {stats['calls']}")
-    print(f"Number of Unit Propagations: {stats['unit_props']}")
-    print(f"Number of Literal Choices: {stats['literal_choices']}")
-    print(f"Maximum Recursion Depth: {stats['max_depth']}")
-    print(f"Number of Backtracks: {stats['backtracks']}")
-    print(f"Number of Conflicts: {stats['conflicts']}")
-    print(f"Time Spent in Heuristic Function: {stats['heuristic_time']:.4f} seconds")
-
+    # Run the solver on all puzzles in the specified directory and save to CSV
+    run_solver_on_all_puzzles(heuristic, args.input_dir, args.output_csv)
 
 if __name__ == '__main__':
     main()
